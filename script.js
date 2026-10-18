@@ -36,6 +36,18 @@ const DAYS = {
 
 function capDay(d) { return d.charAt(0).toUpperCase() + d.slice(1); }
 
+function fmtDay(d) {
+  if (!d) return 'your day';
+  return /^(today|tomorrow|a weekday)$/.test(d) ? d : capDay(d);
+}
+
+function fmtTime(tm) {
+  if (!tm) return 'your time';
+  return /^the /.test(tm) ? 'in ' + tm : 'at ' + tm;
+}
+
+function shortTime(tm) { return (tm || '').replace(/^the /, ''); }
+
 function parseDay(t) {
   for (const k of Object.keys(DAYS)) {
     if (new RegExp('\\b' + k + '\\b').test(t)) return DAYS[k];
@@ -62,19 +74,29 @@ function parsePhone(t) {
 }
 
 function bookingConfirmation() {
-  const day = chatState.day || 'the day you picked';
-  const time = chatState.time || 'your time';
-  return 'You\'re booked for ' + capDay(day) + ' at ' + time + '. What\'s the best number to send the confirmation to?';
+  return 'You\'re booked for ' + fmtDay(chatState.day) + ' ' + fmtTime(chatState.time) +
+    '. What\'s the best number to send the confirmation to?';
 }
 
 function finishBooking(phone) {
-  const day = capDay(chatState.day || 'your day');
-  const time = chatState.time || 'your time';
+  const s = 'All set — you\'re booked for ' + fmtDay(chatState.day) + ' ' + fmtTime(chatState.time) +
+    '. Confirmation is on its way to ' + phone + '. Anything else I can help with?';
   chatState.mode = 'idle';
   chatState.day = null;
   chatState.time = null;
-  return "All set — you're booked for " + day + ' at ' + time +
-    '. Confirmation is on its way to ' + phone + '. Anything else I can help with?';
+  return s;
+}
+
+function sundayClosed() {
+  chatState.mode = 'booking_day';
+  chatState.day = null;
+  addMsg("We're closed on Sundays — want Saturday or a weekday instead?", 'bot');
+}
+
+function resumeBookingQ() {
+  if (chatState.mode === 'booking_time' && chatState.day)
+    return ' Still booking — what time on ' + fmtDay(chatState.day) + '?';
+  return ' Still want to book? What day works — a weekday or Saturday?';
 }
 
 function botReply(q) {
@@ -98,13 +120,14 @@ function botReply(q) {
     // Booking offer accepted
     if ((chatState.mode === 'booking_offer' || chatState.mode === 'hours_offer') && isYes && !isNo) {
       const day = parseDay(t), time = parseTime(t);
+      if (day === 'Sunday') { sundayClosed(); return; }
       if (day && time) {
         chatState.day = day; chatState.time = time;
         chatState.mode = 'booking_phone';
         addMsg(bookingConfirmation(), 'bot');
       } else if (day) {
         chatState.day = day; chatState.mode = 'booking_time';
-        addMsg('Great — ' + capDay(day) + '. What time works? We\'re open 9am–6pm weekdays, 9am–2pm Saturday.', 'bot');
+        addMsg('Great — ' + fmtDay(day) + '. What time works? We\'re open 9am–6pm weekdays, 9am–2pm Saturday.', 'bot');
       } else {
         chatState.mode = 'booking_day';
         addMsg('Great! What day works for you — a weekday or Saturday?', 'bot');
@@ -119,15 +142,30 @@ function botReply(q) {
 
     // Mid-booking: collecting day, then time
     if (chatState.mode === 'booking_day' || chatState.mode === 'booking_time') {
+      // They changed the subject mid-booking — answer it, then resume
+      if (/price|cost|much|quote/.test(t)) {
+        addMsg('Most jobs run $150–$400 depending on scope.' + resumeBookingQ(), 'bot');
+        return;
+      }
+      if (/hour|open|close/.test(t)) {
+        addMsg('We\'re open Mon–Fri 9am–6pm and Sat 9am–2pm.' + resumeBookingQ(), 'bot');
+        return;
+      }
+      if (/human|person|real|call me|talk to someone/.test(t)) {
+        chatState.mode = 'quote_phone';
+        addMsg('Of course — I\'ll have someone call you within 15 minutes during business hours. What\'s your number?', 'bot');
+        return;
+      }
       const day = parseDay(t) || chatState.day;
       const time = parseTime(t);
+      if (day === 'Sunday' && !chatState.day) { sundayClosed(); return; }
       if (day && time) {
         chatState.day = day; chatState.time = time;
         chatState.mode = 'booking_phone';
         addMsg(bookingConfirmation(), 'bot');
       } else if (day && chatState.mode === 'booking_day') {
         chatState.day = day; chatState.mode = 'booking_time';
-        addMsg('Got it — ' + capDay(day) + '. What time works? We\'re open 9am–6pm weekdays, 9am–2pm Saturday.', 'bot');
+        addMsg('Got it — ' + fmtDay(day) + '. What time works? We\'re open 9am–6pm weekdays, 9am–2pm Saturday.', 'bot');
       } else if (time) {
         chatState.time = time;
         if (chatState.day) {
@@ -135,7 +173,7 @@ function botReply(q) {
           addMsg(bookingConfirmation(), 'bot');
         } else {
           chatState.mode = 'booking_day';
-          addMsg('Okay, ' + time + ' — which day? Weekday or Saturday?', 'bot');
+          addMsg('Okay, ' + shortTime(time) + ' — which day? Weekday or Saturday?', 'bot');
         }
       } else {
         addMsg('Sorry, I missed that — which day did you want? Weekday or Saturday?', 'bot');
@@ -146,13 +184,14 @@ function botReply(q) {
     // Fresh booking intent
     if (/book|appointment|schedule|slot|set up a/.test(t)) {
       const day = parseDay(t), time = parseTime(t);
+      if (day === 'Sunday') { sundayClosed(); return; }
       if (day && time) {
         chatState.day = day; chatState.time = time;
         chatState.mode = 'booking_phone';
         addMsg(bookingConfirmation(), 'bot');
       } else if (day) {
         chatState.day = day; chatState.mode = 'booking_time';
-        addMsg(capDay(day) + ' — what time works? We\'re open 9am–6pm weekdays, 9am–2pm Saturday.', 'bot');
+        addMsg(fmtDay(day) + ' — what time works? We\'re open 9am–6pm weekdays, 9am–2pm Saturday.', 'bot');
       } else {
         chatState.mode = 'booking_day';
         addMsg('I can book you right now! What day works — a weekday or Saturday?', 'bot');
@@ -183,6 +222,13 @@ function botReply(q) {
       return;
     }
 
+    // Emergency as a first message gets the urgent path, not the services list
+    if (chatState.mode === 'idle' && /emergency/.test(t)) {
+      chatState.mode = 'quote_phone';
+      addMsg('For emergencies we jump the line with same-day service. What\'s the best number — I\'ll have someone call you right now?', 'bot');
+      return;
+    }
+
     // Services
     if (/service|offer|what do you do|repair|maintenance|emergency/.test(t)) {
       chatState.mode = 'booking_offer';
@@ -201,6 +247,30 @@ function botReply(q) {
     if (/thank|thanks|great|awesome|perfect/.test(t)) {
       chatState.mode = 'idle';
       addMsg('Anytime! Anything else I can help with?', 'bot');
+      return;
+    }
+
+    // A bare "yes" with no context — invite them in instead of falling flat
+    if (chatState.mode === 'idle' && isYes && !isNo) {
+      addMsg('Great — what can I do for you? I can share hours, services, pricing, or book an appointment.', 'bot');
+      return;
+    }
+
+    // Day or time out of nowhere = they want to book
+    const coldDay = parseDay(t), coldTime = parseTime(t);
+    if (chatState.mode === 'idle' && (coldDay || coldTime)) {
+      if (coldDay === 'Sunday') { sundayClosed(); return; }
+      if (coldDay && coldTime) {
+        chatState.day = coldDay; chatState.time = coldTime;
+        chatState.mode = 'booking_phone';
+        addMsg(bookingConfirmation(), 'bot');
+      } else if (coldDay) {
+        chatState.day = coldDay; chatState.mode = 'booking_time';
+        addMsg(fmtDay(coldDay) + ' — what time works? We\'re open 9am–6pm weekdays, 9am–2pm Saturday.', 'bot');
+      } else {
+        chatState.time = coldTime; chatState.mode = 'booking_day';
+        addMsg('Okay, ' + shortTime(coldTime) + ' — which day? Weekday or Saturday?', 'bot');
+      }
       return;
     }
 
