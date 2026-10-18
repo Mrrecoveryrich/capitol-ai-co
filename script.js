@@ -174,6 +174,15 @@ function botReply(q) {
       return;
     }
 
+    // User picked one of the offered services — acknowledge and move to booking
+    if (chatState.mode === 'booking_offer' && /repair|maintenance|emergency/.test(t)) {
+      const svc = /emergency/.test(t) ? 'an emergency call'
+        : /maintenance/.test(t) ? 'maintenance' : 'repairs';
+      chatState.mode = 'booking_day';
+      addMsg('Got it — ' + svc + '. I can book you right now! What day works — a weekday or Saturday?', 'bot');
+      return;
+    }
+
     // Services
     if (/service|offer|what do you do|repair|maintenance|emergency/.test(t)) {
       chatState.mode = 'booking_offer';
