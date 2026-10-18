@@ -246,11 +246,30 @@ function sendChat() {
 chatSend.addEventListener('click', sendChat);
 chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
 
-// Audit form — front-end only for now; wire to Formspree (free) before launch
-document.getElementById('auditForm').addEventListener('submit', e => {
+// Audit form — posts to Formspree; submissions land in Korey's email + Formspree dashboard
+const FORMSPREE_ENDPOINT = 'https://formspree.io/f/moejbkng';
+
+document.getElementById('auditForm').addEventListener('submit', async e => {
   e.preventDefault();
+  const form = e.target;
   const note = document.getElementById('formNote');
-  note.textContent = 'Got it — your free audit is on the way. Check your phone within 48 hours.';
-  note.style.color = '#34d399';
-  e.target.querySelectorAll('input, select, button').forEach(el => el.disabled = true);
+  const btn = form.querySelector('button[type="submit"]');
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  try {
+    const res = await fetch(FORMSPREE_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Accept': 'application/json' },
+      body: new FormData(form)
+    });
+    if (!res.ok) throw new Error('send failed');
+    note.textContent = 'Got it — your free audit is on the way. Check your phone within 48 hours.';
+    note.style.color = '#34d399';
+    form.querySelectorAll('input, select, button').forEach(el => el.disabled = true);
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'Get My Free Audit';
+    note.textContent = 'Something went wrong sending that — please try again.';
+    note.style.color = '#f87171';
+  }
 });
