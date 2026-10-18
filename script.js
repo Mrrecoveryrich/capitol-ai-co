@@ -11,7 +11,7 @@ document.querySelectorAll('.faq-q').forEach(btn => {
 // Capitol AI demo assistant — this bot IS Capitol AI's front desk.
 // Paste a Cal.com / Calendly booking link here when ready and the bot
 // will offer real time-slot picking for the free audit.
-const AUDIT_SCHEDULING_URL = '';
+const AUDIT_SCHEDULING_URL = 'https://cal.com/capital-ai/free-ai-audit';
 
 const chatBody = document.getElementById('chatBody');
 const chatInput = document.getElementById('chatInput');
