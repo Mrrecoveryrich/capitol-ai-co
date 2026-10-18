@@ -8,13 +8,17 @@ document.querySelectorAll('.faq-q').forEach(btn => {
   });
 });
 
-// Demo chatbot — scripted responses with simple conversation state
+// Capitol AI demo assistant — this bot IS Capitol AI's front desk.
+// Paste a Cal.com / Calendly booking link here when ready and the bot
+// will offer real time-slot picking for the free audit.
+const AUDIT_SCHEDULING_URL = '';
+
 const chatBody = document.getElementById('chatBody');
 const chatInput = document.getElementById('chatInput');
 const chatSend = document.getElementById('chatSend');
 
 // chatState tracks where we are in a conversation so "yes" actually means something
-const chatState = { mode: 'idle', day: null, time: null };
+const chatState = { mode: 'idle', name: null, business: null };
 
 function addMsg(text, who) {
   const div = document.createElement('div');
@@ -24,47 +28,39 @@ function addMsg(text, who) {
   chatBody.scrollTop = chatBody.scrollHeight;
 }
 
-const DAYS = {
-  mon: 'Monday', monday: 'Monday',
-  tue: 'Tuesday', tues: 'Tuesday', tuesday: 'Tuesday',
-  wed: 'Wednesday', wednesday: 'Wednesday',
-  thu: 'Thursday', thur: 'Thursday', thurs: 'Thursday', thursday: 'Thursday',
-  fri: 'Friday', friday: 'Friday',
-  sat: 'Saturday', saturday: 'Saturday',
-  sun: 'Sunday', sunday: 'Sunday'
+function addMsgHtml(html, who) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + who;
+  div.innerHTML = html;
+  chatBody.appendChild(div);
+  chatBody.scrollTop = chatBody.scrollHeight;
+}
+
+const SERVICES = {
+  review: { name: 'Review Responder', price: '$297/mo',
+    desc: 'Every Google and Yelp review answered in your voice, within the hour — the good, the bad, and the unfair.' },
+  chatbot: { name: 'Website Chatbot', price: '$497/mo',
+    desc: 'Captures leads 24/7. Answers FAQs, quotes jobs, and books appointments while you\'re on the tools.' },
+  content: { name: 'Content Autopilot', price: '$397/mo',
+    desc: 'A month of social posts written, designed, and scheduled for you. You approve, we publish.' },
+  reminders: { name: 'Appointment Reminders', price: '$297/mo',
+    desc: 'Automatic texts that cut no-shows and fill cancellations from your waitlist.' },
+  full: { name: 'The Full Front Desk', price: '$997/mo',
+    desc: 'All of the above in one package. Your entire front office, automated.' }
 };
 
-function capDay(d) { return d.charAt(0).toUpperCase() + d.slice(1); }
-
-function fmtDay(d) {
-  if (!d) return 'your day';
-  return /^(today|tomorrow|a weekday)$/.test(d) ? d : capDay(d);
+function servicesSummary() {
+  return 'We offer five services: Review Responder ($297/mo), Website Chatbot ($497/mo), ' +
+    'Content Autopilot ($397/mo), Appointment Reminders ($297/mo), and the Full Front Desk ' +
+    '($997/mo). Every plan is month-to-month — cancel anytime.';
 }
 
-function fmtTime(tm) {
-  if (!tm) return 'your time';
-  return /^the /.test(tm) ? 'in ' + tm : 'at ' + tm;
-}
-
-function shortTime(tm) { return (tm || '').replace(/^the /, ''); }
-
-function parseDay(t) {
-  for (const k of Object.keys(DAYS)) {
-    if (new RegExp('\\b' + k + '\\b').test(t)) return DAYS[k];
-  }
-  if (/\btoday\b/.test(t)) return 'today';
-  if (/\btomorrow\b/.test(t)) return 'tomorrow';
-  if (/\bweekday\b/.test(t)) return 'a weekday';
-  if (/\bweekend\b/.test(t)) return 'Saturday';
-  return null;
-}
-
-function parseTime(t) {
-  const m = t.match(/\b(1[0-2]|[1-9])(:\d{2})?\s*(am|pm)\b/);
-  if (m) return m[0].replace(/\s+/, '');
-  if (/\bmorning\b/.test(t)) return 'the morning';
-  if (/\bafternoon\b/.test(t)) return 'the afternoon';
-  if (/\bevening\b/.test(t)) return 'the evening';
+function matchService(t) {
+  if (/review/.test(t)) return SERVICES.review;
+  if (/chat\s?bot/.test(t)) return SERVICES.chatbot;
+  if (/content|social|post/.test(t)) return SERVICES.content;
+  if (/reminder|no-?show/.test(t)) return SERVICES.reminders;
+  if (/full|front desk|everything|all of/.test(t)) return SERVICES.full;
   return null;
 }
 
@@ -73,173 +69,151 @@ function parsePhone(t) {
   return m ? m[0] : null;
 }
 
-function bookingConfirmation() {
-  return 'You\'re booked for ' + fmtDay(chatState.day) + ' ' + fmtTime(chatState.time) +
-    '. What\'s the best number to send the confirmation to?';
+function capName(s) {
+  return s.trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
-function finishBooking(phone) {
-  const s = 'All set — you\'re booked for ' + fmtDay(chatState.day) + ' ' + fmtTime(chatState.time) +
-    '. Confirmation is on its way to ' + phone + '. Anything else I can help with?';
+function offerScheduling() {
+  if (AUDIT_SCHEDULING_URL) {
+    addMsgHtml('Prefer to pick a time yourself? <a href="' + AUDIT_SCHEDULING_URL +
+      '" target="_blank" rel="noopener">Grab a slot here</a>.', 'bot');
+  }
+}
+
+function startAuditFlow() {
+  chatState.mode = 'audit_name';
+  chatState.name = null;
+  chatState.business = null;
+  addMsg('Let\'s get your free AI audit booked. What\'s your name?', 'bot');
+}
+
+function auditConfirmation(phone) {
+  const name = chatState.name || 'there';
+  const biz = chatState.business ? ' ' + chatState.business : ' your business';
   chatState.mode = 'idle';
-  chatState.day = null;
-  chatState.time = null;
-  return s;
-}
-
-function sundayClosed() {
-  chatState.mode = 'booking_day';
-  chatState.day = null;
-  addMsg("We're closed on Sundays — want Saturday or a weekday instead?", 'bot');
-}
-
-function resumeBookingQ() {
-  if (chatState.mode === 'booking_time' && chatState.day)
-    return ' Still booking — what time on ' + fmtDay(chatState.day) + '?';
-  return ' Still want to book? What day works — a weekday or Saturday?';
+  chatState.name = null;
+  chatState.business = null;
+  addMsg('You\'re all set, ' + name + '! Korey will personally review' + biz +
+    ' and send your free audit video within 48 hours — to ' + phone + '. Anything else I can help with?', 'bot');
+  offerScheduling();
 }
 
 function botReply(q) {
-  const t = q.toLowerCase();
+  const t = q.toLowerCase().trim();
   addMsg('…', 'bot');
   setTimeout(() => {
     chatBody.lastChild.remove();
 
-    // Phone number anywhere in a booking flow = done
-    const phone = parsePhone(t);
-    if (phone && (chatState.mode === 'booking_phone' || chatState.mode === 'quote_phone')) {
-      addMsg(chatState.mode === 'quote_phone'
-        ? 'Got it — someone will call you at ' + phone + ' within 15 minutes during business hours. Anything else?'
-        : finishBooking(phone), 'bot');
+    // --- Audit flow: collecting name → business → phone ---
+    if (chatState.mode === 'audit_name') {
+      if (!t) { addMsg('What\'s your name?', 'bot'); return; }
+      chatState.name = capName(t);
+      chatState.mode = 'audit_business';
+      addMsg('Thanks ' + chatState.name + ' — what\'s your business name?', 'bot');
+      return;
+    }
+    if (chatState.mode === 'audit_business') {
+      if (!t) { addMsg('What\'s your business name?', 'bot'); return; }
+      chatState.business = capName(t);
+      chatState.mode = 'audit_phone';
+      addMsg('And the best number to reach you at?', 'bot');
+      return;
+    }
+    if (chatState.mode === 'audit_phone') {
+      const phone = parsePhone(t);
+      if (phone) { auditConfirmation(phone); return; }
+      addMsg('What number should we send your audit to? Just digits is fine.', 'bot');
       return;
     }
 
-    const isYes = /^(yes|yeah|yep|sure|ok|okay|please|do it|sounds good)\b/.test(t.trim()) || /\byes\b/.test(t);
-    const isNo = /^(no|nope|nah|not right now|no thanks)\b/.test(t.trim());
-
-    // Booking offer accepted
-    if ((chatState.mode === 'booking_offer' || chatState.mode === 'hours_offer') && isYes && !isNo) {
-      const day = parseDay(t), time = parseTime(t);
-      if (day === 'Sunday') { sundayClosed(); return; }
-      if (day && time) {
-        chatState.day = day; chatState.time = time;
-        chatState.mode = 'booking_phone';
-        addMsg(bookingConfirmation(), 'bot');
-      } else if (day) {
-        chatState.day = day; chatState.mode = 'booking_time';
-        addMsg('Great — ' + fmtDay(day) + '. What time works? We\'re open 9am–6pm weekdays, 9am–2pm Saturday.', 'bot');
-      } else {
-        chatState.mode = 'booking_day';
-        addMsg('Great! What day works for you — a weekday or Saturday?', 'bot');
+    // --- Callback flow ---
+    if (chatState.mode === 'callback_phone') {
+      const phone = parsePhone(t);
+      if (phone) {
+        chatState.mode = 'idle';
+        addMsg('Done — Korey will call you personally at ' + phone + '. Anything else I can help with?', 'bot');
+        return;
       }
+      addMsg('What\'s the best number for Korey to call?', 'bot');
       return;
     }
-    if ((chatState.mode === 'booking_offer' || chatState.mode === 'hours_offer') && isNo) {
+
+    const isYes = /^(yes|yeah|yep|sure|ok|okay|please|do it|sounds good)\b/.test(t) || /\byes\b/.test(t);
+    const isNo = /^(no|nope|nah|not right now|no thanks)\b/.test(t);
+
+    // Offer accepted / declined
+    if (chatState.mode === 'offer' && isYes && !isNo) { startAuditFlow(); return; }
+    if (chatState.mode === 'offer' && isNo) {
       chatState.mode = 'idle';
-      addMsg('No problem! Anything else — hours, services, pricing?', 'bot');
+      addMsg('No problem! Anything else — services, pricing, or how it works?', 'bot');
       return;
     }
 
-    // Mid-booking: collecting day, then time
-    if (chatState.mode === 'booking_day' || chatState.mode === 'booking_time') {
-      // They changed the subject mid-booking — answer it, then resume
-      if (/price|cost|much|quote/.test(t)) {
-        addMsg('Most jobs run $150–$400 depending on scope.' + resumeBookingQ(), 'bot');
-        return;
-      }
-      if (/hour|open|close/.test(t)) {
-        addMsg('We\'re open Mon–Fri 9am–6pm and Sat 9am–2pm.' + resumeBookingQ(), 'bot');
-        return;
-      }
-      if (/human|person|real|call me|talk to someone/.test(t)) {
-        chatState.mode = 'quote_phone';
-        addMsg('Of course — I\'ll have someone call you within 15 minutes during business hours. What\'s your number?', 'bot');
-        return;
-      }
-      const day = parseDay(t) || chatState.day;
-      const time = parseTime(t);
-      if (day === 'Sunday' && !chatState.day) { sundayClosed(); return; }
-      if (day && time) {
-        chatState.day = day; chatState.time = time;
-        chatState.mode = 'booking_phone';
-        addMsg(bookingConfirmation(), 'bot');
-      } else if (day && chatState.mode === 'booking_day') {
-        chatState.day = day; chatState.mode = 'booking_time';
-        addMsg('Got it — ' + fmtDay(day) + '. What time works? We\'re open 9am–6pm weekdays, 9am–2pm Saturday.', 'bot');
-      } else if (time) {
-        chatState.time = time;
-        if (chatState.day) {
-          chatState.mode = 'booking_phone';
-          addMsg(bookingConfirmation(), 'bot');
-        } else {
-          chatState.mode = 'booking_day';
-          addMsg('Okay, ' + shortTime(time) + ' — which day? Weekday or Saturday?', 'bot');
-        }
-      } else {
-        addMsg('Sorry, I missed that — which day did you want? Weekday or Saturday?', 'bot');
-      }
+    // Book the free audit / schedule / call
+    if (/book|audit|schedule|appointment|demo|sign\s?up|get started/.test(t)) {
+      startAuditFlow();
+      return;
+    }
+    if (/call me|call back|talk to (someone|a person|korey)|human|real person|phone call/.test(t)) {
+      chatState.mode = 'callback_phone';
+      addMsg('You got it — what\'s the best number for Korey to call?', 'bot');
       return;
     }
 
-    // Fresh booking intent
-    if (/book|appointment|schedule|slot|set up a/.test(t)) {
-      const day = parseDay(t), time = parseTime(t);
-      if (day === 'Sunday') { sundayClosed(); return; }
-      if (day && time) {
-        chatState.day = day; chatState.time = time;
-        chatState.mode = 'booking_phone';
-        addMsg(bookingConfirmation(), 'bot');
-      } else if (day) {
-        chatState.day = day; chatState.mode = 'booking_time';
-        addMsg(fmtDay(day) + ' — what time works? We\'re open 9am–6pm weekdays, 9am–2pm Saturday.', 'bot');
-      } else {
-        chatState.mode = 'booking_day';
-        addMsg('I can book you right now! What day works — a weekday or Saturday?', 'bot');
-      }
+    // Specific service deep-dive
+    const svc = matchService(t);
+    if (svc && /service|what|tell|detail|more|about|do you|offer/.test(t)) {
+      chatState.mode = 'offer';
+      addMsg(svc.name + ' — ' + svc.price + '. ' + svc.desc +
+        ' Want me to book your free audit so Korey can show you exactly what it\'d do for your business?', 'bot');
+      return;
+    }
+    // Service name on its own ("chatbot", "reminders") — treat as interest
+    if (svc) {
+      chatState.mode = 'offer';
+      addMsg(svc.name + ' — ' + svc.price + '. ' + svc.desc +
+        ' Want me to book your free audit so Korey can show you exactly what it\'d do for your business?', 'bot');
       return;
     }
 
-    // Hours
-    if (/hour|open|close|when are you/.test(t)) {
-      chatState.mode = 'hours_offer';
-      addMsg("We're open Mon–Fri 9am–6pm and Sat 9am–2pm. Want me to book you in?", 'bot');
+    // Services overview
+    if (/service|what do you do|offer|help with/.test(t)) {
+      chatState.mode = 'offer';
+      addMsg(servicesSummary() +
+        ' Want details on any of them — or should we book your free audit?', 'bot');
       return;
     }
 
     // Pricing
-    if (/price|cost|much|quote/.test(t)) {
-      chatState.mode = 'quote_phone';
-      addMsg("Most jobs run $150–$400 depending on scope. I can have a tech call you with an exact quote — what's the best number?", 'bot');
+    if (/price|pricing|cost|much|charge/.test(t)) {
+      chatState.mode = 'offer';
+      addMsg('Simple: Starter $297/mo, Growth $497/mo (most popular), Full Front Desk $997/mo. ' +
+        'Every plan is month-to-month, cancel anytime, and setup is free on annual plans. ' +
+        'Want to book the free audit and see what fits?', 'bot');
       return;
     }
 
-    // User picked one of the offered services — acknowledge and move to booking
-    if (chatState.mode === 'booking_offer' && /repair|maintenance|emergency/.test(t)) {
-      const svc = /emergency/.test(t) ? 'an emergency call'
-        : /maintenance/.test(t) ? 'maintenance' : 'repairs';
-      chatState.mode = 'booking_day';
-      addMsg('Got it — ' + svc + '. I can book you right now! What day works — a weekday or Saturday?', 'bot');
+    // How it works
+    if (/how|work|process|start|long|setup/.test(t)) {
+      chatState.mode = 'offer';
+      addMsg('Three steps: 1) Free AI audit — Korey personally reviews your business and sends you a short video. ' +
+        '2) Setup in 7 days — built in your voice, you approve before anything goes live. ' +
+        '3) It runs itself — you get a monthly report of what the AI handled. Ready to book your audit?', 'bot');
       return;
     }
 
-    // Emergency as a first message gets the urgent path, not the services list
-    if (chatState.mode === 'idle' && /emergency/.test(t)) {
-      chatState.mode = 'quote_phone';
-      addMsg('For emergencies we jump the line with same-day service. What\'s the best number — I\'ll have someone call you right now?', 'bot');
+    // Who / about
+    if (/who|korey|about|company|yourself/.test(t)) {
+      chatState.mode = 'offer';
+      addMsg('I\'m the AI front desk for Capitol AI Co. — built by Korey Crawford, a Lansing local who\'s spent ' +
+        '15 years learning the internet inside and out. Now he puts local businesses on autopilot. ' +
+        'Want to book your free audit with him?', 'bot');
       return;
     }
 
-    // Services
-    if (/service|offer|what do you do|repair|maintenance|emergency/.test(t)) {
-      chatState.mode = 'booking_offer';
-      addMsg('We handle repairs, maintenance, and emergency calls. Which one do you need — want me to book you in?', 'bot');
-      return;
-    }
-
-    // Talk to a human
-    if (/human|person|real|call me|talk to someone/.test(t)) {
-      chatState.mode = 'quote_phone';
-      addMsg("Of course — I'll have someone call you within 15 minutes during business hours. What's your number?", 'bot');
+    // Cancel / contract worries
+    if (/cancel|contract|commit/.test(t)) {
+      addMsg('No contracts, no cancellation fees — every plan is month-to-month. If it\'s not paying for itself, you shouldn\'t pay for it.', 'bot');
       return;
     }
 
@@ -250,33 +224,15 @@ function botReply(q) {
       return;
     }
 
-    // A bare "yes" with no context — invite them in instead of falling flat
-    if (chatState.mode === 'idle' && isYes && !isNo) {
-      addMsg('Great — what can I do for you? I can share hours, services, pricing, or book an appointment.', 'bot');
-      return;
-    }
-
-    // Day or time out of nowhere = they want to book
-    const coldDay = parseDay(t), coldTime = parseTime(t);
-    if (chatState.mode === 'idle' && (coldDay || coldTime)) {
-      if (coldDay === 'Sunday') { sundayClosed(); return; }
-      if (coldDay && coldTime) {
-        chatState.day = coldDay; chatState.time = coldTime;
-        chatState.mode = 'booking_phone';
-        addMsg(bookingConfirmation(), 'bot');
-      } else if (coldDay) {
-        chatState.day = coldDay; chatState.mode = 'booking_time';
-        addMsg(fmtDay(coldDay) + ' — what time works? We\'re open 9am–6pm weekdays, 9am–2pm Saturday.', 'bot');
-      } else {
-        chatState.time = coldTime; chatState.mode = 'booking_day';
-        addMsg('Okay, ' + shortTime(coldTime) + ' — which day? Weekday or Saturday?', 'bot');
-      }
+    // A bare "yes" with no context
+    if (isYes && !isNo) {
+      addMsg('Great — I can walk you through our services, pricing, or how it works. Or we can book your free AI audit right now. What sounds good?', 'bot');
       return;
     }
 
     // Fallback — stays useful
     chatState.mode = 'idle';
-    addMsg('I can help with hours, services, pricing, or booking an appointment. What do you need?', 'bot');
+    addMsg('I can walk you through our services, pricing, or how it works — or book your free AI audit right here. What do you need?', 'bot');
   }, 900);
 }
 
